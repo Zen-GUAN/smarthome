@@ -1,0 +1,156 @@
+# ============================================================
+# 巴法云 MQTT 桥接自动化模板（Home Assistant automations.yaml 片段）
+# 用法: 将 <TOPIC>/<实体ID>/<中文名> 替换为你自己的值后追加进 automations.yaml,
+#       或直接用 scripts/gen_bemfa_automations_v2.py 按设备表批量生成。
+# 约定: 每个设备两条自动化 —— _in 接收指令, _out 状态同步(发到 topic/up 防回环)
+# topic 类型后缀: 002=灯 005=空调(完整对照表见 docs/01)
+# ============================================================
+
+# ===== 模式1: 单设备(灯/开关类) =====
+- id: bemfa_<device>_in
+  alias: bemfa<中文名>_接收指令
+  trigger:
+    - platform: mqtt
+      topic: <TOPIC002>
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'on' }}"
+          sequence:
+            - service: switch.turn_on
+              target:
+                entity_id: "<ENTITY>"
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'off' }}"
+          sequence:
+            - service: switch.turn_off
+              target:
+                entity_id: "<ENTITY>"
+  mode: single
+
+- id: bemfa_<device>_out
+  alias: bemfa<中文名>_状态同步
+  trigger:
+    - platform: state
+      entity_id: "<ENTITY>"
+  action:
+    - service: mqtt.publish
+      data:
+        topic: <TOPIC002>/up
+        payload: "{{ 'on' if is_state('<ENTITY>', 'on') else 'off' }}"
+        retain: false
+  mode: single
+
+# ===== 模式2: 合并组(一个topic控制多路灯, 一开全开一关全关) =====
+# ⚠️ 合并组模板里必须含 entity_id: 键行, 直接把列表挂 target 下会校验失败、
+#    自动化静默 disabled(症状 = state unavailable + 日志 could not be validated)
+- id: bemfa_<group>_in
+  alias: bemfa<组名>_接收指令
+  trigger:
+    - platform: mqtt
+      topic: <TOPIC002>
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'on' }}"
+          sequence:
+            - service: switch.turn_on
+              target:
+                entity_id:
+                    - "<ENTITY_1>"
+                    - "<ENTITY_2>"
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'off' }}"
+          sequence:
+            - service: switch.turn_off
+              target:
+                entity_id:
+                    - "<ENTITY_1>"
+                    - "<ENTITY_2>"
+  mode: single
+
+- id: bemfa_<group>_out
+  alias: bemfa<组名>_状态同步
+  trigger:
+    - platform: state
+      entity_id: "<ENTITY_1>"
+    - platform: state
+      entity_id: "<ENTITY_2>"
+  action:
+    - service: mqtt.publish
+      data:
+        topic: <TOPIC002>/up
+        payload: "{{ 'on' if is_state('<ENTITY_1>', 'on') or is_state('<ENTITY_2>', 'on') else 'off' }}"
+        retain: false
+  mode: single
+
+# ===== 模式3: 空调(005, payload: on / off / on#模式#温度) =====
+# 模式代码: 1自动 2制冷 3制热 4送风 5除湿 6睡眠 7节能, 温度16-32
+# 注意 UIOT 空调 hvac_modes 只有 [off,cool,heat,dry,fan_only] 无 auto, 1/6/7 都映射到 cool
+- id: bemfa_<ac>_in
+  alias: bemfa<空调名>_接收指令
+  trigger:
+    - platform: mqtt
+      topic: <TOPIC005>
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'on' }}"
+          sequence:
+            - service: climate.turn_on
+              target:
+                entity_id: "<AC_ENTITY>"
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload == 'off' }}"
+          sequence:
+            - service: climate.turn_off
+              target:
+                entity_id: "<AC_ENTITY>"
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.payload.startswith('on#') }}"
+          sequence:
+            - service: climate.set_temperature
+              data:
+                temperature: "{{ trigger.payload.split('#')[2] | int(26) if trigger.payload.split('#') | length > 2 else 26 }}"
+                hvac_mode: "{{ {'1':'cool','2':'cool','3':'heat','4':'fan_only','5':'dry','6':'cool','7':'cool'}.get(trigger.payload.split('#')[1], 'cool') }}"
+              target:
+                entity_id: "<AC_ENTITY>"
+  mode: single
+
+- id: bemfa_<ac>_out
+  alias: bemfa<空调名>_状态同步
+  trigger:
+    - platform: state
+      entity_id: "<AC_ENTITY>"
+    - platform: state
+      entity_id: "<AC_ENTITY>"
+      attribute: temperature
+  action:
+    - service: mqtt.publish
+      data:
+        topic: <TOPIC005>/up
+        payload: >-
+          {% if is_state('<AC_ENTITY>', 'off') %}off{% else %}on#{{ {'cool':'2','heat':'3','dry':'5','fan_only':'4'}.get(states('<AC_ENTITY>'), '2') }}#{{ state_attr('<AC_ENTITY>', 'temperature') | int(26) }}{% endif %}
+        retain: false
+  mode: single
+
+# ===== 附: 定时任务示例(HA原生能力, 与巴法桥接无关, 按需增删) =====
+- id: fan_schedule_example
+  alias: 风扇定时示例(每晚21点睡眠模式)
+  trigger:
+    - platform: time
+      at: "21:00:00"
+  action:
+    - service: fan.turn_on
+      target:
+        entity_id: "<FAN_ENTITY>"
+      data:
+        preset_mode: sleep
+  mode: single

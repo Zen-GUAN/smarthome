@@ -1,0 +1,13 @@
+# 凭据与敏感文件, 严禁提交
+.env
+私钥*
+*.key
+*creds*
+*token*
+tuya_devices.json
+*.db
+*.log
+*.apk
+__pycache__/
+*.pyc
+.DS_Store
