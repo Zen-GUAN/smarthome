@@ -3,15 +3,19 @@
 """按设备表批量生成巴法云收/发自动化, 追加进 automations.yaml(每设备收发各一条)。
 
 用法: 把 DEVICES 换成你自己的设备清单(表内为示例占位), 设 AUTOMATIONS_YAML
-指向 HA 的 automations.yaml 后运行。生成后自动做 YAML 校验, 失败自动回滚;
-若有批量前备份文件(<P>.bak_before_batch)会先恢复再追加。
+指向 HA 的 automations.yaml 后运行。
+- 若存在批量前备份 <P>.bak_before_batch, 运行时先恢复到该备份再追加(可重复执行);
+- 无论有无备份, 追加前总把当前文件留底为 <P>.pre_append.bak;
+- 追加后在 HA 容器内做 YAML 校验(docker exec; 容器内已含 PyYAML, 本机无需安装),
+  校验失败自动回滚到追加前内容。
 """
 import shutil, time, subprocess, os
 
 # 路径与容器名按实际环境修改, 也可用环境变量覆盖
 P = os.environ.get('AUTOMATIONS_YAML', './automations.yaml')
 HA_CONTAINER = os.environ.get('HA_CONTAINER', 'homeassistant')
-BAK0 = P + '.bak_before_batch'  # 批量前备份(可选)
+BAK0 = P + '.bak_before_batch'   # 批量前备份(可选, 存在则先恢复)
+PRE = P + '.pre_append.bak'      # 追加前自动留底(总是创建)
 
 # 示例设备表 —— 换成你自己的!
 # kind: L=单灯/开关 M=合并组(一个topic控多路灯) C=空调
@@ -178,6 +182,10 @@ for key, label, topic, ent, kind in DEVICES:
     fi, fo = GEN[kind]
     block += fi(key, label, topic, ent) + fo(key, label, topic, ent)
 
+if os.path.exists(P):
+    shutil.copy(P, PRE)  # 追加前永远留底, 保证校验失败可自动回滚
+    print('pre-append backup saved:', PRE)
+
 with open(P, 'a') as f:
     f.write(block)
 print('appended', len(DEVICES) * 2, 'automations')
@@ -187,9 +195,10 @@ r = subprocess.run(['docker', 'exec', HA_CONTAINER, 'python3', '-c',
                    capture_output=True, text=True, timeout=120)
 print(r.stdout.strip() or r.stderr.strip()[-500:])
 if 'YAML_OK' not in r.stdout:
-    if os.path.exists(BAK0):
-        shutil.copy(BAK0, P)
-        print('!! YAML INVALID - restored from backup, NOT reloaded')
+    src = BAK0 if os.path.exists(BAK0) else PRE
+    if os.path.exists(src):
+        shutil.copy(src, P)
+        print('!! YAML INVALID - 已自动回滚到追加前内容, NOT reloaded')
     else:
         print('!! YAML INVALID - NOT reloaded, 请手动删除刚追加的段落')
 else:

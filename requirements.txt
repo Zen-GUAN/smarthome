@@ -1,0 +1,5 @@
+# 仅 uiot_control.py 需要; 其余脚本使用 Python 标准库
+requests>=2.31.0
+pycryptodome>=3.20.0
+# 注: gen_bemfa_automations_v2.py 的 YAML 校验通过 docker exec 在 HA 容器内进行
+# (容器内已含 PyYAML), 无需本机安装

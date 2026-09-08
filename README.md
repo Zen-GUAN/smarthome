@@ -1,8 +1,9 @@
 # NAS 智能家居中枢（参考实现）
 
 基于 UGREEN NAS(Docker) + Home Assistant 的全屋智能语音控制方案，供同类需求
-参考复刻：UIOT/保利智家 openapi 直控灯与中央空调，巴法云(bemfa.com) MQTT
-桥接打通小爱同学/米家语音控制，涂鸦云集成接入净化器/新风等标准设备。
+参考复刻：对接 UIOT/保利智家设备控制协议（openapi 网关）直控灯与中央空调，
+巴法云(bemfa.com) MQTT 桥接打通小爱同学/米家语音控制，涂鸦云集成接入
+净化器/新风等标准设备。
 
 本仓库给的是**可复用的方法与工具**，不是拿来即用的住宅配置——设备表、
 实体ID、topic 全部为示例占位，请按你自己的家重新生成。
@@ -39,6 +40,22 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
 三种模式模板见 `config/automations-template.yaml`：
 单设备(灯/开关) / 合并组(一个 topic 控多路灯) / 空调(`on#模式#温度`)
 
+## UIOT 设备控制协议要点（对接参考）
+
+本项目对接 UIOT/保利智家设备的 openapi 网关，协议特征如下（供同类需求复刻参考，
+与 `scripts/uiot_control.py` 实现一一对应）：
+
+- **网关**：`https://openapi.unisiot.com/gateway`，请求体经 AES-256-ECB 加密后再做
+  `hex → base64` 双重编码；密钥取 app_secret 前 32 字节
+- **签名**：`md5(sorted(params 不含 sign/Content-Type) 拼接 + app_secret)`
+- **鉴权**：OAuth2 password grant，以平台账号密码交换 access_token，每次调用携带
+- **核心 API**：`device.list`（列设备/读状态）、`device.control`（下发 powerSwitch /
+  thermostatMode / targetTemperature 等属性）
+- **注意**：UIOT 空调 hvac_modes 仅 [off, cool, heat, dry, fan_only] 无 auto，
+  巴法模式 1/6/7 需映射到 cool
+
+以上为对接实现所需的协议事实；凭据获取请依据你与平台的既有协议。
+
 ## 快速开始（以你自己的家为例）
 
 1. **HA 直连巴法**：巴法强制 MQTT client_id=用户私钥，HA 配置流没有该字段，
@@ -47,7 +64,8 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
    `002`=灯、`005`=空调，协议选 MQTT（完整后缀表见 docs/01）
 3. **生成自动化**：维护你自己的设备表（key/中文名/topic/实体/kind），
    用 `scripts/gen_bemfa_automations_v2.py` 批量生成，或手改
-   `config/automations-template.yaml`；生成脚本自带 YAML 校验，失败自动回滚
+   `config/automations-template.yaml`；生成脚本追加前自动备份当前文件，
+   YAML 校验失败自动回滚到追加前内容
 4. **新建 topic 后必须重启 HA**：巴法不会向已有连接投递新建 topic 的消息，
    `automation.reload` 不会重新 SUBSCRIBE，只有重连才生效
 5. **米家绑定**：米家App → 我的 → 其他平台设备 → 巴法，输入巴法控制台账号密码
@@ -71,6 +89,8 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
 │   ├── bemfa_ping_verify.py      topic 链路验收(ping 不动设备,只认 last_triggered)
 │   └── qps_rapid_test.py         巴法 QPS 限流复现脚本
 ├── .env.example                  凭据模板(复制为 .env 填入真实值)
+├── requirements.txt              Python 依赖(仅 uiot_control.py 需要, 其余为标准库)
+├── LICENSE                       MIT
 └── .gitignore
 ```
 
@@ -97,3 +117,9 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
   敏感清单未收入仓库
 - 密钥一律走 `.env`
 - MQTT 直连巴法时 client_id=私钥，同一私钥重复连接会互踢，勿多处同时连
+
+## 合规说明
+
+本项目仅用于对接你**已合法获得访问权限**的设备控制接口，所有凭据经 `.env` 管理、
+绝不入库；仓库不含任何凭据获取方法，亦不鼓励对未授权接口的请求。请遵守你所使用
+平台的条款与当地法律法规。
