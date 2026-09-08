@@ -1,0 +1,2 @@
+# 仅运行 tests/ 单测需要(运行时依赖见 requirements.txt)
+pytest>=8.0.0

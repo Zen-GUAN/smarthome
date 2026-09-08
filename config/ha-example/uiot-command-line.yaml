@@ -1,0 +1,33 @@
+# =====================================================================
+# 示例: UIOT 设备经 scripts/uiot_control.py 以 HA command_line 实体落地
+# —— 这是给复刻者的"推断示例"接线图(作者实际部署中 UIOT 实体的接入方式
+#    不在本仓库范围内); 请按你的实际环境调整, 尤其是 command_state 取值解析。
+#
+# 使用前提:
+#   1. 将仓库 scripts/ 拷贝(或挂载)到 HA 配置目录, 如 ha-config/scripts/;
+#   2. uiot_control.py 默认读"脚本上级目录"的 .env, 即 /config/.env,
+#      凭据按 .env.example 准备(本项目不包含凭据获取方法);
+#   3. <DEVICE_ID_*> 替换为你自己的设备ID(可用 `uiot_control.py list` 查询);
+#   4. 经 HA packages 机制引入, 例如 configuration.yaml 中:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#      并将本文件放入 config/packages/ 目录后重启 HA 或 reload 命令行实体。
+# =====================================================================
+command_line:
+  - switch:
+      name: UIOT 示例灯一
+      unique_id: uiot_light1
+      command_on:  'python3 /config/scripts/uiot_control.py on <DEVICE_ID_LIGHT1>'
+      command_off: 'python3 /config/scripts/uiot_control.py off <DEVICE_ID_LIGHT1>'
+      # 未配置 command_state 时开关状态为假定值; 如需真实状态可接:
+      # command_state: 'python3 /config/scripts/uiot_control.py list'
+      # value_template: '{{ "on" if <你的解析逻辑> else "off" }}'
+
+  - climate:
+      name: UIOT 示例空调
+      unique_id: uiot_ac1
+      command_on:  'python3 /config/scripts/uiot_control.py ac <DEVICE_ID_AC> 26 cool'
+      command_off: 'python3 /config/scripts/uiot_control.py off <DEVICE_ID_AC>'
+      # 注意: command_line 的 climate 不支持温度设定, 完整温控需自行实现
+      # set_temperature 脚本封装; 温度/模式类控制更推荐走巴法桥接方案
+      # (见 config/automations-template.yaml 模式3), 两者二选一即可

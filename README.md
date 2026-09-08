@@ -56,7 +56,22 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
 
 以上为对接实现所需的协议事实；凭据获取请依据你与平台的既有协议。
 
+## 硬件承载（无需 NAS）
+
+本项目 HA 中枢可运行于任意满足"家庭内网 + 常开 + 支持 Docker/HAOS"的主机，
+NAS 仅为作者的部署选择之一，并非前置条件。以下均可作为承载：
+
+- 闲置电脑/笔记本：装 Linux 后 `docker compose up` 启动（见仓库 `docker-compose.yml`）
+- 树莓派 4/5（建议 SSD 启动以避免 SD 卡损耗）
+- x86 迷你主机（如 N100/N150，性价比高，可同时承载数据库与看板）
+- 软路由旁挂 Docker、或 Home Assistant Green 一体机
+
+核心要求只有两点：① 与你的智能设备处于同一家庭局域网；② 7×24 常开。
+脚本与桥接逻辑与具体硬件解耦，迁移只需搬运 `scripts/`、`config/` 与 `.env`。
+
 ## 快速开始（以你自己的家为例）
+
+> AI 编码代理协作指引见 `AGENTS.md`；一键起 HA + 本地 MQTT 调试栈见 `docker-compose.yml`。
 
 1. **HA 直连巴法**：巴法强制 MQTT client_id=用户私钥，HA 配置流没有该字段，
    需 storage surgery 注入，完整步骤见 `docs/02-巴法云桥接实操.md`
@@ -77,19 +92,26 @@ HA 原生 mqtt 实体当不了桥，正确模式是**每设备两条自动化**�
 
 ```
 ├── README.md                     本文件
+├── AGENTS.md                     AI 编码代理协作指引(项目地图/常用命令/边界)
+├── docker-compose.yml            一键起 HA + 本地 Mosquitto 调试栈
 ├── docs/
 │   ├── 01-架构总览.md             分层架构/桥接模式/topic约定/双注册问题
 │   ├── 02-巴法云桥接实操.md       HA直连巴法完整实操(client_id难题/验收方法/踩坑清单)
 │   └── 03-巴法QPS离线调研.md      小爱"服务器离线"问题根因分析与实测
 ├── config/
-│   └── automations-template.yaml 三种桥接模式的占位符模板(单设备/合并组/空调/定时示例)
+│   ├── automations-template.yaml 三种桥接模式的占位符模板(单设备/合并组/空调/定时示例)
+│   └── ha-example/
+│       └── uiot-command-line.yaml UIOT 经 command_line 接入 HA 的示例(脱敏占位)
 ├── scripts/
 │   ├── uiot_control.py           UIOT 设备控制 CLI(list/on/off/ac/raw)
 │   ├── gen_bemfa_automations_v2.py 按设备表批量生成 bemfa 收发自动化
 │   ├── bemfa_ping_verify.py      topic 链路验收(ping 不动设备,只认 last_triggered)
 │   └── qps_rapid_test.py         巴法 QPS 限流复现脚本
+├── tests/
+│   └── test_uiot_crypto.py       加密/签名纯函数单测(pytest, 不联网)
 ├── .env.example                  凭据模板(复制为 .env 填入真实值)
-├── requirements.txt              Python 依赖(仅 uiot_control.py 需要, 其余为标准库)
+├── requirements.txt              Python 运行时依赖(仅 uiot_control.py 需要)
+├── requirements-dev.txt          测试依赖(pytest)
 ├── LICENSE                       MIT
 └── .gitignore
 ```

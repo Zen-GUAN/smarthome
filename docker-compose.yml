@@ -1,0 +1,32 @@
+# 一键起 HA + 本地 Mosquitto 调试栈。
+# 用法: docker compose up -d ; HA 首次启动后浏览器访问 http://localhost:8123 完成初始化。
+# 说明: 容器名 homeassistant 与挂载路径 /config 和 scripts/gen_bemfa_automations_v2.py
+#       的 YAML 校验(docker exec)默认值一致, 起栈后可直接跑脚本。
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    volumes:
+      - ./ha-config:/config
+      # /etc/localtime 挂载仅 Linux 主机可用; Windows Docker Desktop 可注释掉下一行
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+    networks: [smarthome]
+
+  # 本地 MQTT broker: 仅用于离线调试 HA 自动化与脚本。
+  # 生产环境请让 HA 的 MQTT 集成直连巴法云 broker (bemfa.com:9501), 无需此容器。
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    # 镜像默认只监听 localhost, 必须显式指定免认证配置才能被容器外访问;
+    # 仅限本机/家庭内网调试用, 勿暴露公网
+    command: mosquitto -c /mosquitto-no-auth.conf
+    ports:
+      - "1883:1883"
+    restart: unless-stopped
+    networks: [smarthome]
+
+networks:
+  smarthome:
